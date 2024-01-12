@@ -96,6 +96,7 @@ class IntegratedGradientExplainer(BaseExplainer):
             func, multiply_by_inputs=self.multiply_by_inputs, **init_args
         )
         inputs = self.get_input_embeds(text)
+        # pred = func(inputs)
         baselines = self._generate_baselines(input_len)
 
         attr = dl.attribute(inputs, baselines=baselines, target=target, **call_args)

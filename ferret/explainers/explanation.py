@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -12,6 +12,11 @@ class Explanation:
     scores: np.array
     explainer: str
     target: int
+    base_values: np.array = None
+    pred: np.array = None
+    # HACK
+    rationale: np.array = None
+
 
 @dataclass
 class ExplanationWithRationale(Explanation):

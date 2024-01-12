@@ -27,9 +27,7 @@ class AOPC_Comprehensiveness_Evaluation(BaseEvaluator):
     BEST_SORTING_ASCENDING = False
     TYPE_METRIC = "faithfulness"
 
-    def compute_evaluation(
-        self, explanation: Explanation, target=1, **evaluation_args
-    ) -> Evaluation:
+    def compute_evaluation(self, explanation: Explanation, target=1, **evaluation_args) -> Evaluation:
         """Evaluate an explanation on the AOPC Comprehensiveness metric.
 
         Args:
@@ -46,17 +44,19 @@ class AOPC_Comprehensiveness_Evaluation(BaseEvaluator):
             Evaluation : the AOPC Comprehensiveness score of the explanation
         """
 
-        remove_first_last, only_pos, removal_args, _ = parse_evaluator_args(
-            evaluation_args
-        )
+        remove_first_last, only_pos, removal_args, _ = parse_evaluator_args(evaluation_args)
 
         text = explanation.text
         score_explanation = explanation.scores
+        baseline = explanation.base_values.item()
 
         # TODO - use tokens
         # Get prediction probability of the input sencence for the target
         _, logits = self.helper._forward(text, output_hidden_states=False)
-        baseline = logits.softmax(-1)[0, target].item()
+        if logits.size(-1) == 1:
+            fx = logits[0, target].item()
+        else:
+            fx = logits.softmax(-1)[0, target].item()
 
         # Tokenized sentence
         item = self.helper._tokenize(text)
@@ -74,10 +74,8 @@ class AOPC_Comprehensiveness_Evaluation(BaseEvaluator):
         discrete_expl_ths = list()
         id_tops = list()
 
-        get_discrete_rationale_function = (
-            _check_and_define_get_id_discrete_rationale_function(
-                removal_args["based_on"]
-            )
+        get_discrete_rationale_function = _check_and_define_get_id_discrete_rationale_function(
+            removal_args["based_on"], fx, baseline
         )
 
         thresholds = removal_args["thresholds"]
@@ -88,11 +86,7 @@ class AOPC_Comprehensiveness_Evaluation(BaseEvaluator):
             id_top = get_discrete_rationale_function(score_explanation, v, only_pos)
 
             # If the rationale is the same, we do not include it. In this way, we will not consider in the average the same omission.
-            if (
-                id_top is not None
-                and last_id_top is not None
-                and set(id_top) == last_id_top
-            ):
+            if id_top is not None and last_id_top is not None and set(id_top) == last_id_top:
                 id_top = None
 
             id_tops.append(id_top)
@@ -123,12 +117,33 @@ class AOPC_Comprehensiveness_Evaluation(BaseEvaluator):
 
         # Prediction probability for the target
         _, logits = self.helper._forward(discrete_expl_ths, output_hidden_states=False)
-        probs_removing = logits.softmax(-1)[:, target].cpu().numpy()
+        if len(logits.size()) == 2:
+            probs_removing = logits[:, target].cpu().numpy()
+        else:
+            probs_removing = logits.softmax(-1)[:, target].cpu().numpy()
 
         # compute probability difference
-        removal_importance = baseline - probs_removing
-        #  compute AOPC comprehensiveness
-        aopc_comprehesiveness = _compute_aopc(removal_importance)
+        if len(logits.size()) == 2:
+            # delta_probs_removing = _compute_aopc(probs_removing - baseline)
+            avg_probs_removing = _compute_aopc(probs_removing)
+            if fx < baseline:
+                if avg_probs_removing > baseline:
+                    aopc_comprehesiveness = 1
+                elif avg_probs_removing < fx:
+                    aopc_comprehesiveness = 0
+                else:
+                    aopc_comprehesiveness = 1 - (abs(baseline - avg_probs_removing)) / abs(baseline - fx)
+            else:
+                if avg_probs_removing < baseline:
+                    aopc_comprehesiveness = 1
+                elif avg_probs_removing > fx:
+                    aopc_comprehesiveness = 0
+                else:
+                    aopc_comprehesiveness = 1 - (abs(avg_probs_removing - baseline)) / abs(fx - baseline)
+        else:
+            removal_importance = fx - probs_removing
+            #  compute AOPC comprehensiveness
+            aopc_comprehesiveness = _compute_aopc(removal_importance)
 
         evaluation_output = Evaluation(self.SHORT_NAME, aopc_comprehesiveness)
         return evaluation_output
@@ -144,9 +159,7 @@ class AOPC_Sufficiency_Evaluation(BaseEvaluator):
     BEST_SORTING_ASCENDING = True
     TYPE_METRIC = "faithfulness"
 
-    def compute_evaluation(
-        self, explanation: Explanation, target=1, **evaluation_args
-    ) -> Evaluation:
+    def compute_evaluation(self, explanation: Explanation, target=1, **evaluation_args) -> Evaluation:
         """Evaluate an explanation on the AOPC Sufficiency metric.
 
         Args:
@@ -158,17 +171,19 @@ class AOPC_Sufficiency_Evaluation(BaseEvaluator):
             Evaluation : the AOPC Sufficiency score of the explanation
         """
 
-        remove_first_last, only_pos, removal_args, _ = parse_evaluator_args(
-            evaluation_args
-        )
+        remove_first_last, only_pos, removal_args, _ = parse_evaluator_args(evaluation_args)
 
         text = explanation.text
         score_explanation = explanation.scores
+        baseline = explanation.base_values.item()
 
         # TO DO - use tokens
         # Get prediction probability of the input sencence for the target
         _, logits = self.helper._forward(text, output_hidden_states=False)
-        baseline = logits.softmax(-1)[0, target].item()
+        if logits.size(-1) == 1:
+            fx = logits[0, target].item()
+        else:
+            fx = logits.softmax(-1)[0, target].item()
 
         # Tokenized sentence
         item = self.helper._tokenize(text)
@@ -185,10 +200,8 @@ class AOPC_Sufficiency_Evaluation(BaseEvaluator):
         discrete_expl_ths = []
         id_tops = []
 
-        get_discrete_rationale_function = (
-            _check_and_define_get_id_discrete_rationale_function(
-                removal_args["based_on"]
-            )
+        get_discrete_rationale_function = _check_and_define_get_id_discrete_rationale_function(
+            removal_args["based_on"], fx, baseline
         )
 
         thresholds = removal_args["thresholds"]
@@ -199,11 +212,7 @@ class AOPC_Sufficiency_Evaluation(BaseEvaluator):
             id_top = get_discrete_rationale_function(score_explanation, v, only_pos)
 
             # If the rationale is the same, we do not include it. In this way, we will not consider in the average the same omission.
-            if (
-                id_top is not None
-                and last_id_top is not None
-                and set(id_top) == last_id_top
-            ):
+            if id_top is not None and last_id_top is not None and set(id_top) == last_id_top:
                 id_top = None
 
             id_tops.append(id_top)
@@ -241,12 +250,31 @@ class AOPC_Sufficiency_Evaluation(BaseEvaluator):
 
         # Prediction probability for the target
         _, logits = self.helper._forward(discrete_expl_ths, output_hidden_states=False)
-        probs_removing = logits.softmax(-1)[:, target].cpu().numpy()
+        if len(logits.size()) == 2:
+            probs_removing = logits[:, target].cpu().numpy()
+        else:
+            probs_removing = logits.softmax(-1)[:, target].cpu().numpy()
 
         # Compute probability difference
-        removal_importance = baseline - probs_removing
-
-        aopc_sufficiency = _compute_aopc(removal_importance)
+        if len(logits.size()) == 2:
+            avg_probs_removing = _compute_aopc(probs_removing)
+            if fx < baseline:
+                if avg_probs_removing < fx:
+                    aopc_sufficiency = 0
+                elif avg_probs_removing > baseline:
+                    aopc_sufficiency = 1
+                else:
+                    aopc_sufficiency = abs(baseline - avg_probs_removing) / abs(baseline - fx)
+            else:
+                if avg_probs_removing > fx:
+                    aopc_sufficiency = 0
+                elif avg_probs_removing < baseline:
+                    aopc_sufficiency = 1
+                else:
+                    aopc_sufficiency = abs(avg_probs_removing - baseline) / abs(fx - baseline)
+        else:
+            removal_importance = fx - probs_removing
+            aopc_sufficiency = _compute_aopc(removal_importance)
 
         evaluation_output = Evaluation(self.SHORT_NAME, aopc_sufficiency)
         return evaluation_output
@@ -261,10 +289,13 @@ class TauLOO_Evaluation(BaseEvaluator):
     TYPE_METRIC = "faithfulness"
     BEST_SORTING_ASCENDING = False
 
-    def compute_leave_one_out_occlusion(self, text, target=1, remove_first_last=True):
+    def compute_leave_one_out_occlusion(self, text, target=1, remove_first_last=True, handle_tokens="remove", transform=None):
 
         _, logits = self.helper._forward(text, output_hidden_states=False)
-        baseline = logits.softmax(-1)[0, target].item()
+        if len(logits.size()) == 2:
+            pred = logits[:, target].cpu().numpy()
+        else:
+            pred = logits.softmax(-1)[:, target].cpu().numpy()
 
         item = self.helper._tokenize(text)
         input_len = item["attention_mask"].sum().item()
@@ -273,22 +304,31 @@ class TauLOO_Evaluation(BaseEvaluator):
             input_ids = input_ids[1:-1]
 
         samples = list()
+        tokens = self.tokenizer.convert_ids_to_tokens(input_ids)
         for occ_idx in range(len(input_ids)):
             sample = copy.copy(input_ids)
-            sample.pop(occ_idx)
+            if handle_tokens == "remove":
+                sample.pop(occ_idx)
+            else:
+                sample[occ_idx] = self.tokenizer.mask_token_id
             sample = self.tokenizer.decode(sample)
+            # sample = [self.tokenizer.cls_token_id] + sample + [self.tokenizer.sep_token_id]
             samples.append(sample)
 
         _, logits = self.helper._forward(samples, output_hidden_states=False)
-        leave_one_out_removal = logits.softmax(-1)[:, target].cpu()
+        if len(logits.size()) == 2:
+            leave_one_out_removal = logits[:, target].cpu()
+        else:
+            leave_one_out_removal = logits.softmax(-1)[:, target].cpu()
 
-        occlusion_importance = leave_one_out_removal - baseline
+        if transform is None:
+            occlusion_importance = leave_one_out_removal - pred
+        else:
+            occlusion_importance = transform(leave_one_out_removal) - transform(pred)
 
-        return occlusion_importance
+        return occlusion_importance, pred, tokens
 
-    def compute_evaluation(
-        self, explanation: Explanation, target=1, **evaluation_args
-    ) -> Evaluation:
+    def compute_evaluation(self, explanation: Explanation, target=1, **evaluation_args) -> Evaluation:
         """Evaluate an explanation on the tau-LOO metric,
         i.e., the Kendall tau correlation between the explanation scores and leave one out (LOO) scores,
         computed by leaving one feature out and computing the change in the prediciton probability
@@ -312,10 +352,7 @@ class TauLOO_Evaluation(BaseEvaluator):
                 score_explanation = score_explanation[1:-1]
 
         loo_scores = (
-            self.compute_leave_one_out_occlusion(
-                text, target=target, remove_first_last=remove_first_last
-            ).numpy()
-            * -1
+            self.compute_leave_one_out_occlusion(text, target=target, remove_first_last=remove_first_last).numpy() * -1
         )
 
         kendalltau_score = kendalltau(loo_scores, score_explanation)[0]
