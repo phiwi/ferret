@@ -289,7 +289,7 @@ class TauLOO_Evaluation(BaseEvaluator):
     TYPE_METRIC = "faithfulness"
     BEST_SORTING_ASCENDING = False
 
-    def compute_leave_one_out_occlusion(self, text, target=1, remove_first_last=True, handle_tokens="remove", transform=None):
+    def compute_leave_one_out_occlusion(self, text, target=1, remove_first_last=True, handle_tokens="remove", scaler=None):
 
         _, logits = self.helper._forward(text, output_hidden_states=False)
         if len(logits.size()) == 2:
@@ -321,12 +321,13 @@ class TauLOO_Evaluation(BaseEvaluator):
         else:
             leave_one_out_removal = logits.softmax(-1)[:, target].cpu()
 
-        if transform is None:
+        if scaler is None:
             occlusion_importance = leave_one_out_removal - pred
         else:
-            occlusion_importance = transform(leave_one_out_removal) - transform(pred)
+            rescaled_pred = scaler.inverse_transform(pred)
+            occlusion_importance = scaler.inverse_transform(leave_one_out_removal) - rescaled_pred
 
-        return occlusion_importance, pred, tokens
+        return occlusion_importance, rescalred_pred, tokens
 
     def compute_evaluation(self, explanation: Explanation, target=1, **evaluation_args) -> Evaluation:
         """Evaluate an explanation on the tau-LOO metric,
