@@ -324,10 +324,10 @@ class TauLOO_Evaluation(BaseEvaluator):
         if scaler is None:
             occlusion_importance = leave_one_out_removal - pred
         else:
-            rescaled_pred = scaler.inverse_transform(pred)
-            occlusion_importance = scaler.inverse_transform(leave_one_out_removal) - rescaled_pred
+            pred = scaler.inverse_transform(pred)
+            occlusion_importance = scaler.inverse_transform(leave_one_out_removal) - pred
 
-        return occlusion_importance, rescalred_pred, tokens
+        return occlusion_importance, pred, tokens
 
     def compute_evaluation(self, explanation: Explanation, target=1, **evaluation_args) -> Evaluation:
         """Evaluate an explanation on the tau-LOO metric,
